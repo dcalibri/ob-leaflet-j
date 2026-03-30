@@ -1,7 +1,36 @@
-import { QuartzTransformerPlugin, QuartzFilterPlugin, QuartzEmitterPlugin } from '@quartz-community/types';
+import { QuartzTransformerPlugin, QuartzFilterPlugin, QuartzEmitterPlugin, QuartzComponent } from '@quartz-community/types';
 export { PageGenerator, PageMatcher, QuartzComponent, QuartzComponentConstructor, QuartzComponentProps, QuartzEmitterPlugin, QuartzFilterPlugin, QuartzPageTypePlugin, QuartzPageTypePluginInstance, QuartzTransformerPlugin, StringResource, VirtualPage } from '@quartz-community/types';
-import { ExampleTransformerOptions, ExampleFilterOptions, ExampleEmitterOptions } from './types.js';
-export { ExampleComponent, ExampleComponentOptions } from './components/index.js';
+
+interface ExampleTransformerOptions {
+    /** Token used to highlight text, defaults to ==highlight== */
+    highlightToken: string;
+    /** Add a CSS class to all headings in the rendered HTML. */
+    headingClass: string;
+    /** Enable remark-gfm for tables/task lists. */
+    enableGfm: boolean;
+    /** Enable adding slug IDs to headings. */
+    addHeadingSlugs: boolean;
+}
+interface ExampleFilterOptions {
+    /** Allow pages marked draft: true to publish. */
+    allowDrafts: boolean;
+    /** Exclude pages that contain any of these frontmatter tags. */
+    excludeTags: string[];
+    /** Exclude paths that start with any of these prefixes (relative to content root). */
+    excludePathPrefixes: string[];
+}
+interface ExampleEmitterOptions {
+    /** Filename to emit at the site root. */
+    manifestSlug: string;
+    /** Whether to include the frontmatter block in the manifest. */
+    includeFrontmatter: boolean;
+    /** Extra metadata to write at the top level of the manifest. */
+    metadata: Record<string, unknown>;
+    /** Optional hook to transform the emitted manifest JSON string. */
+    transformManifest?: (json: string) => string;
+    /** Add a custom class to the emitted manifest <script> tag if used in HTML. */
+    manifestScriptClass?: string;
+}
 
 /**
  * Example transformer showing remark/rehype usage and resource injection.
@@ -18,4 +47,11 @@ declare const ExampleFilter: QuartzFilterPlugin<Partial<ExampleFilterOptions>>;
  */
 declare const ExampleEmitter: QuartzEmitterPlugin<Partial<ExampleEmitterOptions>>;
 
-export { ExampleEmitter, ExampleEmitterOptions, ExampleFilter, ExampleFilterOptions, ExampleTransformer, ExampleTransformerOptions };
+interface ExampleComponentOptions {
+    prefix?: string;
+    suffix?: string;
+    className?: string;
+}
+declare const _default: (opts?: ExampleComponentOptions) => QuartzComponent;
+
+export { _default as ExampleComponent, type ExampleComponentOptions, ExampleEmitter, type ExampleEmitterOptions, ExampleFilter, type ExampleFilterOptions, ExampleTransformer, type ExampleTransformerOptions };
