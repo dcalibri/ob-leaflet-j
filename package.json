@@ -16,8 +16,9 @@
     "pluginType": "transformer"
   },
   "scripts": {
-    "build": "tsc && tsup src/index.ts --format esm --dts",
-    "dev": "tsc --watch"
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest"
   },
   "dependencies": {
     "@quartz-community/types": "latest",
@@ -25,6 +26,10 @@
   },
   "devDependencies": {
     "typescript": "^5.0.0",
-    "tsup": "^7.0.0"
+    "tsup": "^7.0.0",
+    "vitest": "^1.0.0",
+    "sass": "^1.0.0",
+    "esbuild": "^0.20.0",
+    "@types/node": "^20.0.0"
   }
 }
