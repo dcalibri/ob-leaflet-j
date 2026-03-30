@@ -1,5 +1,5 @@
-import { QuartzTransformerPlugin } from "@quartz-community/types";
-import { Root } from "mdast";
+import type { QuartzTransformerPlugin } from "@quartz-community/types";
+import type { Root } from "mdast";
 import { visit } from "unist-util-visit";
 
 interface LeafletConfig {
