@@ -209,48 +209,86 @@ function generateLeafletHTML(config: LeafletConfig): string {
   const mapId = config.id;
 
   return `<div id="${mapId}" style="height: ${config.height}; width: ${config.width}; border-radius: 8px; overflow: hidden; margin: 1rem 0;"></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <script>
   (function() {
-    const mapContainer = document.getElementById("${mapId}");
-    if (!mapContainer) return;
-    
-    const map = L.map("${mapId}").setView([${config.lat}, ${config.long}], ${config.defaultZoom});
-    const markers = ${markersJson};
-    
-    L.tileLayer("${tileUrl}", {
-      attribution: "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors",
-      maxZoom: ${config.maxZoom},
-      minZoom: ${config.minZoom},
-      zoomDelta: ${config.zoomDelta},
-    }).addTo(map);
+    const LEAFLET_JS = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
+    const LEAFLET_CSS = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
 
-    markers.forEach((marker) => {
-      const markerLat = Number(marker.lat);
-      const markerLong = Number(marker.long ?? marker.lng ?? marker.lon ?? marker.longitude);
-      if (!Number.isFinite(markerLat) || !Number.isFinite(markerLong)) return;
+    const initMap = () => {
+      const mapContainer = document.getElementById("${mapId}");
+      if (!mapContainer) return;
 
-      let leafletMarker;
-      if (marker.iconUrl) {
-        const customIcon = L.icon({
-          iconUrl: marker.iconUrl,
-          shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
-          iconSize: [25, 41],
-          iconAnchor: [12, 41],
-          popupAnchor: [1, -34],
-          shadowSize: [41, 41],
-        });
-        leafletMarker = L.marker([markerLat, markerLong], { icon: customIcon });
-      } else {
-        leafletMarker = L.marker([markerLat, markerLong]);
-      }
+      const map = L.map("${mapId}").setView([${config.lat}, ${config.long}], ${config.defaultZoom});
+      const markers = ${markersJson};
+      const defaultIcon = L.icon({
+        iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
+        iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
+        shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41],
+      });
+      
+      L.tileLayer("${tileUrl}", {
+        attribution: "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors",
+        maxZoom: ${config.maxZoom},
+        minZoom: ${config.minZoom},
+        zoomDelta: ${config.zoomDelta},
+      }).addTo(map);
 
-      leafletMarker.addTo(map);
-      if (marker.popup) leafletMarker.bindPopup(marker.popup);
-    });
-    
-    ${config.darkMode ? `mapContainer.style.filter = "brightness(0.6) invert(1) contrast(1.2)";` : ""}
+      markers.forEach((marker) => {
+        const markerLat = Number(marker.lat);
+        const markerLong = Number(marker.long ?? marker.lng ?? marker.lon ?? marker.longitude);
+        if (!Number.isFinite(markerLat) || !Number.isFinite(markerLong)) return;
+
+        let leafletMarker;
+        if (marker.iconUrl) {
+          const customIcon = L.icon({
+            iconUrl: marker.iconUrl,
+            shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41],
+          });
+          leafletMarker = L.marker([markerLat, markerLong], { icon: customIcon });
+        } else {
+          leafletMarker = L.marker([markerLat, markerLong], { icon: defaultIcon });
+        }
+
+        leafletMarker.addTo(map);
+        if (marker.popup) leafletMarker.bindPopup(marker.popup);
+      });
+      
+      ${config.darkMode ? `mapContainer.style.filter = "brightness(0.6) invert(1) contrast(1.2)";` : ""}
+    };
+
+    if (!document.querySelector('link[data-leaflet-cdn="1"]')) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = LEAFLET_CSS;
+      link.setAttribute("data-leaflet-cdn", "1");
+      document.head.appendChild(link);
+    }
+
+    if (window.L) {
+      initMap();
+      return;
+    }
+
+    if (!window.__leafletLoadPromise) {
+      window.__leafletLoadPromise = new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = LEAFLET_JS;
+        script.async = true;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+
+    window.__leafletLoadPromise.then(initMap).catch(() => {});
   })();
 </script>`;
 }
