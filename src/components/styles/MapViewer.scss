@@ -6,3 +6,19 @@
   z-index: 0;
   position: relative;
 }
+
+.leaflet-popup-inner {
+  font-size: 0.9rem;
+  min-width: 120px;
+
+  strong {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 1rem;
+  }
+
+  p {
+    margin: 0;
+    color: #555;
+  }
+}

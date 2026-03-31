@@ -16,6 +16,25 @@ interface LeafletConfig {
   scale: number;
   darkMode: boolean;
   tileServer?: string;
+  markers: LeafletMarker[];
+}
+
+interface LeafletMarker {
+  lat: number;
+  long: number;
+  popup?: string;
+  iconUrl?: string;
+}
+
+function parseScalar(value: string): string {
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+
+  return value;
 }
 
 function parseLeafletBlock(code: string): LeafletConfig {
@@ -32,32 +51,112 @@ function parseLeafletBlock(code: string): LeafletConfig {
     unit: "meters",
     scale: 1,
     darkMode: false,
+    markers: [],
   };
 
   const lines = code.split("\n");
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
+  let i = 0;
+
+  while (i < lines.length) {
+    const currentLine = lines[i];
+    if (currentLine === undefined) break;
+    const trimmed = currentLine.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      i += 1;
+      continue;
+    }
 
     const colonIndex = trimmed.indexOf(":");
-    if (colonIndex === -1) continue;
+    if (colonIndex === -1) {
+      i += 1;
+      continue;
+    }
 
     const key = trimmed.substring(0, colonIndex).trim();
     const value = trimmed.substring(colonIndex + 1).trim();
 
-    if (key === "id") config.id = value;
-    else if (key === "height") config.height = value;
-    else if (key === "width") config.width = value;
+    if (key === "markers") {
+      i += 1;
+      while (i < lines.length) {
+        const markerLine = lines[i];
+        if (markerLine === undefined) break;
+        const markerTrimmed = markerLine.trim();
+
+        if (!markerTrimmed || markerTrimmed.startsWith("#")) {
+          i += 1;
+          continue;
+        }
+
+        if (!markerLine.startsWith(" ") && !markerTrimmed.startsWith("-")) break;
+        if (!markerTrimmed.startsWith("-")) {
+          i += 1;
+          continue;
+        }
+
+        const marker: LeafletMarker = { lat: config.lat, long: config.long };
+        const firstLineContent = markerTrimmed.substring(1).trim();
+
+        if (firstLineContent.includes(":")) {
+          const firstColon = firstLineContent.indexOf(":");
+          const markerKey = firstLineContent.substring(0, firstColon).trim();
+          const markerValue = parseScalar(firstLineContent.substring(firstColon + 1).trim());
+
+          if (markerKey === "lat") marker.lat = parseFloat(markerValue);
+          else if (markerKey === "long" || markerKey === "lng") marker.long = parseFloat(markerValue);
+          else if (markerKey === "popup") marker.popup = markerValue;
+          else if (markerKey === "iconUrl") marker.iconUrl = markerValue;
+        }
+
+        i += 1;
+        while (i < lines.length) {
+          const detailLine = lines[i];
+          if (detailLine === undefined) break;
+          const detailTrimmed = detailLine.trim();
+
+          if (!detailTrimmed || detailTrimmed.startsWith("#")) {
+            i += 1;
+            continue;
+          }
+          if (!detailLine.startsWith(" ")) break;
+          if (detailTrimmed.startsWith("-")) break;
+
+          const detailColon = detailTrimmed.indexOf(":");
+          if (detailColon === -1) {
+            i += 1;
+            continue;
+          }
+
+          const detailKey = detailTrimmed.substring(0, detailColon).trim();
+          const detailValue = parseScalar(detailTrimmed.substring(detailColon + 1).trim());
+
+          if (detailKey === "lat") marker.lat = parseFloat(detailValue);
+          else if (detailKey === "long" || detailKey === "lng") marker.long = parseFloat(detailValue);
+          else if (detailKey === "popup") marker.popup = detailValue;
+          else if (detailKey === "iconUrl") marker.iconUrl = detailValue;
+
+          i += 1;
+        }
+
+        config.markers.push(marker);
+      }
+      continue;
+    }
+
+    if (key === "id") config.id = parseScalar(value);
+    else if (key === "height") config.height = parseScalar(value);
+    else if (key === "width") config.width = parseScalar(value);
     else if (key === "lat") config.lat = parseFloat(value);
     else if (key === "long") config.long = parseFloat(value);
     else if (key === "minZoom") config.minZoom = parseFloat(value);
     else if (key === "maxZoom") config.maxZoom = parseFloat(value);
     else if (key === "defaultZoom") config.defaultZoom = parseFloat(value);
     else if (key === "zoomDelta") config.zoomDelta = parseFloat(value);
-    else if (key === "unit") config.unit = value;
+    else if (key === "unit") config.unit = parseScalar(value);
     else if (key === "scale") config.scale = parseFloat(value);
     else if (key === "darkMode") config.darkMode = value.toLowerCase() === "true";
-    else if (key === "tileServer") config.tileServer = value;
+    else if (key === "tileServer") config.tileServer = parseScalar(value);
+
+    i += 1;
   }
 
   return config;
@@ -66,6 +165,7 @@ function parseLeafletBlock(code: string): LeafletConfig {
 function generateLeafletHTML(config: LeafletConfig): string {
   const tileUrl =
     config.tileServer || "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+  const markersJson = JSON.stringify(config.markers);
   const mapId = config.id;
 
   return `<div id="${mapId}" style="height: ${config.height}; width: ${config.width}; border-radius: 8px; overflow: hidden; margin: 1rem 0;"></div>
@@ -77,6 +177,7 @@ function generateLeafletHTML(config: LeafletConfig): string {
     if (!mapContainer) return;
     
     const map = L.map("${mapId}").setView([${config.lat}, ${config.long}], ${config.defaultZoom});
+    const markers = ${markersJson};
     
     L.tileLayer("${tileUrl}", {
       attribution: "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors",
@@ -84,6 +185,26 @@ function generateLeafletHTML(config: LeafletConfig): string {
       minZoom: ${config.minZoom},
       zoomDelta: ${config.zoomDelta},
     }).addTo(map);
+
+    markers.forEach((marker) => {
+      let leafletMarker;
+      if (marker.iconUrl) {
+        const customIcon = L.icon({
+          iconUrl: marker.iconUrl,
+          shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+          shadowSize: [41, 41],
+        });
+        leafletMarker = L.marker([marker.lat, marker.long], { icon: customIcon });
+      } else {
+        leafletMarker = L.marker([marker.lat, marker.long]);
+      }
+
+      leafletMarker.addTo(map);
+      if (marker.popup) leafletMarker.bindPopup(marker.popup);
+    });
     
     ${config.darkMode ? `mapContainer.style.filter = "brightness(0.6) invert(1) contrast(1.2)";` : ""}
   })();

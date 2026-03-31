@@ -1,6 +1,6 @@
 import type { QuartzComponent, QuartzComponentConstructor } from "@quartz-community/types";
 import style from "./styles/MapViewer.scss";
-import script from "./scripts/MapViewer.inline.js";  // ← .js not .ts
+import script from "./scripts/MapViewer.inline.js";
 
 interface MapViewerOptions {
   defaultZoom?: number;
@@ -9,21 +9,7 @@ interface MapViewerOptions {
 }
 
 export default ((opts?: MapViewerOptions) => {
-  const defaultZoom = opts?.defaultZoom ?? 13;
-  const defaultHeight = opts?.defaultHeight ?? "400px";
-  const tileUrl = opts?.tileUrl ?? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-
-  const MapViewer: QuartzComponent = () => {
-    return (
-      <div
-        class="leaflet-map-container"
-        data-zoom={defaultZoom}
-        data-height={defaultHeight}
-        data-tile-url={tileUrl}
-        style={`height: ${defaultHeight}`}
-      />
-    );
-  };
+  const MapViewer: QuartzComponent = () => null;
 
   MapViewer.css = style;
   MapViewer.afterDOMLoaded = script;
