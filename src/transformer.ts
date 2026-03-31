@@ -21,6 +21,7 @@ interface LeafletConfig {
 }
 
 interface LeafletMarker {
+  id?: string;
   lat: number;
   long: number;
   popup?: string;
@@ -44,7 +45,8 @@ function applyMarkerField(marker: LeafletMarker, rawKey: string, rawValue: strin
   const key = rawKey.trim();
   const value = parseScalar(rawValue.trim());
 
-  if (key === "lat") marker.lat = parseFloat(value);
+  if (key === "id" || key === "markerId" || key === "uid") marker.id = value;
+  else if (key === "lat") marker.lat = parseFloat(value);
   else if (key === "long" || key === "lng" || key === "lon" || key === "longitude") marker.long = parseFloat(value);
   else if (key === "popup") marker.popup = value;
   else if (key === "iconUrl") marker.iconUrl = value;
@@ -63,7 +65,10 @@ function parseLegacyMarkerLine(rawValue: string, fallbackLat: number, fallbackLo
     long: Number.isFinite(longCandidate) ? longCandidate : fallbackLong,
   };
 
-  if (parts[0]) marker.title = parts[0];
+  if (parts[0]) {
+    marker.id = parts[0];
+    marker.title = parts[0];
+  }
   if (note) marker.popup = note;
   else if (parts[0]) marker.popup = parts[0];
 
@@ -251,12 +256,20 @@ function generateLeafletHTML(config: LeafletConfig): string {
       const normalizeFallbackMarkers = (input) => {
         if (!Array.isArray(input)) return [];
         return input
-          .map((item) => {
+          .map((item, index) => {
             if (!item || typeof item !== "object") return null;
             const lat = Number(item.lat);
             const long = Number(item.long ?? item.lng ?? item.lon ?? item.longitude);
             if (!Number.isFinite(lat) || !Number.isFinite(long)) return null;
+            const markerId =
+              item.id ??
+              item.markerId ??
+              item.uid ??
+              item.noteId ??
+              item.slug ??
+              mapId + "-marker-" + (index + 1);
             return {
+              id: String(markerId),
               lat,
               long,
               popup: item.popup,
@@ -329,6 +342,10 @@ function generateLeafletHTML(config: LeafletConfig): string {
         Array.isArray(configuredMarkers) && configuredMarkers.length > 0
           ? configuredMarkers
           : resolveFallbackMarkersByMapId();
+      markers = markers.map((marker, index) => ({
+        ...marker,
+        id: marker.id ?? marker.markerId ?? marker.uid ?? (mapId + "-marker-" + (index + 1)),
+      }));
       const defaultIcon = L.icon({
         iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
         iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
@@ -369,6 +386,8 @@ function generateLeafletHTML(config: LeafletConfig): string {
             leafletMarker = L.marker([markerLat, markerLong], { icon: defaultIcon });
           }
 
+          leafletMarker.options.markerId = marker.id;
+          if (marker.title && !marker.popup) leafletMarker.bindTooltip(marker.title);
           leafletMarker.addTo(markerLayer);
           if (marker.popup) leafletMarker.bindPopup(marker.popup);
         });
