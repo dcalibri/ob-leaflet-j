@@ -24,6 +24,8 @@ interface LeafletMarker {
   long: number;
   popup?: string;
   iconUrl?: string;
+  title?: string;
+  description?: string;
 }
 
 function parseScalar(value: string): string {
@@ -35,6 +37,18 @@ function parseScalar(value: string): string {
   }
 
   return value;
+}
+
+function applyMarkerField(marker: LeafletMarker, rawKey: string, rawValue: string): void {
+  const key = rawKey.trim();
+  const value = parseScalar(rawValue.trim());
+
+  if (key === "lat") marker.lat = parseFloat(value);
+  else if (key === "long" || key === "lng" || key === "lon" || key === "longitude") marker.long = parseFloat(value);
+  else if (key === "popup") marker.popup = value;
+  else if (key === "iconUrl") marker.iconUrl = value;
+  else if (key === "title") marker.title = value;
+  else if (key === "description") marker.description = value;
 }
 
 function parseLeafletBlock(code: string): LeafletConfig {
@@ -99,12 +113,8 @@ function parseLeafletBlock(code: string): LeafletConfig {
         if (firstLineContent.includes(":")) {
           const firstColon = firstLineContent.indexOf(":");
           const markerKey = firstLineContent.substring(0, firstColon).trim();
-          const markerValue = parseScalar(firstLineContent.substring(firstColon + 1).trim());
-
-          if (markerKey === "lat") marker.lat = parseFloat(markerValue);
-          else if (markerKey === "long" || markerKey === "lng") marker.long = parseFloat(markerValue);
-          else if (markerKey === "popup") marker.popup = markerValue;
-          else if (markerKey === "iconUrl") marker.iconUrl = markerValue;
+          const markerValue = firstLineContent.substring(firstColon + 1).trim();
+          applyMarkerField(marker, markerKey, markerValue);
         }
 
         i += 1;
@@ -127,18 +137,48 @@ function parseLeafletBlock(code: string): LeafletConfig {
           }
 
           const detailKey = detailTrimmed.substring(0, detailColon).trim();
-          const detailValue = parseScalar(detailTrimmed.substring(detailColon + 1).trim());
-
-          if (detailKey === "lat") marker.lat = parseFloat(detailValue);
-          else if (detailKey === "long" || detailKey === "lng") marker.long = parseFloat(detailValue);
-          else if (detailKey === "popup") marker.popup = detailValue;
-          else if (detailKey === "iconUrl") marker.iconUrl = detailValue;
+          const detailValue = detailTrimmed.substring(detailColon + 1).trim();
+          applyMarkerField(marker, detailKey, detailValue);
 
           i += 1;
         }
 
+        if (!marker.popup && (marker.title || marker.description)) {
+          marker.popup = `${marker.title ?? ""}${marker.description ? ` - ${marker.description}` : ""}`.trim();
+        }
         config.markers.push(marker);
       }
+      continue;
+    }
+
+    if (key === "marker") {
+      const marker: LeafletMarker = { lat: config.lat, long: config.long };
+      i += 1;
+
+      while (i < lines.length) {
+        const detailLine = lines[i];
+        if (detailLine === undefined) break;
+        const detailTrimmed = detailLine.trim();
+
+        if (!detailTrimmed || detailTrimmed.startsWith("#")) {
+          i += 1;
+          continue;
+        }
+        if (!detailLine.startsWith(" ")) break;
+
+        const detailColon = detailTrimmed.indexOf(":");
+        if (detailColon !== -1) {
+          const detailKey = detailTrimmed.substring(0, detailColon).trim();
+          const detailValue = detailTrimmed.substring(detailColon + 1).trim();
+          applyMarkerField(marker, detailKey, detailValue);
+        }
+        i += 1;
+      }
+
+      if (!marker.popup && (marker.title || marker.description)) {
+        marker.popup = `${marker.title ?? ""}${marker.description ? ` - ${marker.description}` : ""}`.trim();
+      }
+      config.markers.push(marker);
       continue;
     }
 
@@ -187,6 +227,10 @@ function generateLeafletHTML(config: LeafletConfig): string {
     }).addTo(map);
 
     markers.forEach((marker) => {
+      const markerLat = Number(marker.lat);
+      const markerLong = Number(marker.long ?? marker.lng ?? marker.lon ?? marker.longitude);
+      if (!Number.isFinite(markerLat) || !Number.isFinite(markerLong)) return;
+
       let leafletMarker;
       if (marker.iconUrl) {
         const customIcon = L.icon({
@@ -197,9 +241,9 @@ function generateLeafletHTML(config: LeafletConfig): string {
           popupAnchor: [1, -34],
           shadowSize: [41, 41],
         });
-        leafletMarker = L.marker([marker.lat, marker.long], { icon: customIcon });
+        leafletMarker = L.marker([markerLat, markerLong], { icon: customIcon });
       } else {
-        leafletMarker = L.marker([marker.lat, marker.long]);
+        leafletMarker = L.marker([markerLat, markerLong]);
       }
 
       leafletMarker.addTo(map);
