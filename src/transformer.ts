@@ -17,11 +17,13 @@ interface LeafletConfig {
   darkMode: boolean;
   showCenterMarker: boolean;
   tileServer?: string;
+  markerTypeIcons: Record<string, string>;
   markers: LeafletMarker[];
 }
 
 interface LeafletMarker {
   id?: string;
+  type?: string;
   lat: number;
   long: number;
   popup?: string;
@@ -41,15 +43,28 @@ function parseScalar(value: string): string {
   return value;
 }
 
+function normalizeObsidianLink(value: string): string {
+  const cleaned = parseScalar(value).trim();
+  if (
+    (cleaned.startsWith("![[") && cleaned.endsWith("]]")) ||
+    (cleaned.startsWith("[[") && cleaned.endsWith("]]"))
+  ) {
+    const inner = cleaned.replace(/^!?\[\[/, "").replace(/\]\]$/, "");
+    return inner.split("|")[0]?.trim() ?? "";
+  }
+  return cleaned;
+}
+
 function applyMarkerField(marker: LeafletMarker, rawKey: string, rawValue: string): void {
   const key = rawKey.trim();
   const value = parseScalar(rawValue.trim());
 
   if (key === "id" || key === "markerId" || key === "uid") marker.id = value;
+  else if (key === "type" || key === "markerType") marker.type = value;
   else if (key === "lat") marker.lat = parseFloat(value);
   else if (key === "long" || key === "lng" || key === "lon" || key === "longitude") marker.long = parseFloat(value);
   else if (key === "popup") marker.popup = value;
-  else if (key === "iconUrl") marker.iconUrl = value;
+  else if (key === "iconUrl" || key === "icon" || key === "markerIcon") marker.iconUrl = normalizeObsidianLink(value);
   else if (key === "title") marker.title = value;
   else if (key === "description") marker.description = value;
 }
@@ -90,6 +105,7 @@ function parseLeafletBlock(code: string): LeafletConfig {
     scale: 1,
     darkMode: false,
     showCenterMarker: false,
+    markerTypeIcons: {},
     markers: [],
   };
 
@@ -226,6 +242,10 @@ function parseLeafletBlock(code: string): LeafletConfig {
     else if (key === "scale") config.scale = parseFloat(value);
     else if (key === "darkMode") config.darkMode = value.toLowerCase() === "true";
     else if (key === "showCenterMarker") config.showCenterMarker = value.toLowerCase() !== "false";
+    else if (key.startsWith("markerType.")) {
+      const typeName = key.substring("markerType.".length).trim();
+      if (typeName) config.markerTypeIcons[typeName] = normalizeObsidianLink(value);
+    }
     else if (key === "tileServer") config.tileServer = parseScalar(value);
 
     i += 1;
@@ -253,6 +273,7 @@ function generateLeafletHTML(config: LeafletConfig): string {
       const map = L.map("${mapId}").setView([${config.lat}, ${config.long}], ${config.defaultZoom});
       const mapId = "${mapId}";
       const configuredMarkers = ${markersJson};
+      const markerTypeIcons = ${JSON.stringify(config.markerTypeIcons)};
       const normalizeFallbackMarkers = (input) => {
         if (!Array.isArray(input)) return [];
         return input
@@ -270,11 +291,12 @@ function generateLeafletHTML(config: LeafletConfig): string {
               mapId + "-marker-" + (index + 1);
             return {
               id: String(markerId),
+              type: item.type ?? item.markerType ?? item.category,
               lat,
               long,
               popup: item.popup,
               iconUrl: item.iconUrl,
-              title: item.title,
+              title: item.title ?? item.name,
               description: item.description,
             };
           })
@@ -345,6 +367,7 @@ function generateLeafletHTML(config: LeafletConfig): string {
       markers = markers.map((marker, index) => ({
         ...marker,
         id: marker.id ?? marker.markerId ?? marker.uid ?? (mapId + "-marker-" + (index + 1)),
+        type: marker.type ?? marker.markerType,
       }));
       const defaultIcon = L.icon({
         iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
@@ -364,6 +387,30 @@ function generateLeafletHTML(config: LeafletConfig): string {
       }).addTo(map);
 
       const markerLayer = L.layerGroup().addTo(map);
+      const resolveIconSpec = (rawValue) => {
+        if (!rawValue || typeof rawValue !== "string") return null;
+        const trimmed = rawValue.trim();
+        if (!trimmed) return null;
+
+        const looksLikeWikilink =
+          (trimmed.startsWith("![[") && trimmed.endsWith("]]")) ||
+          (trimmed.startsWith("[[") && trimmed.endsWith("]]"));
+        const wikilinkContent = looksLikeWikilink
+          ? trimmed.replace(/^!?\[\[/, "").replace(/\]\]$/, "").split("|")[0].trim()
+          : trimmed;
+
+        if (/^(https?:)?\/\//i.test(wikilinkContent) || wikilinkContent.startsWith("data:")) {
+          return { kind: "image", src: wikilinkContent };
+        }
+
+        const hasImageExt = /\.(png|jpe?g|gif|webp|svg|avif|bmp|ico)$/i.test(wikilinkContent);
+        if (hasImageExt) {
+          const normalizedPath = wikilinkContent.replace(/^\.?\//, "").replace(/^\/+/, "");
+          return { kind: "image", src: "/" + normalizedPath };
+        }
+
+        return { kind: "emoji", text: wikilinkContent };
+      };
       const renderMarkers = (inputMarkers) => {
         markerLayer.clearLayers();
         inputMarkers.forEach((marker) => {
@@ -372,24 +419,46 @@ function generateLeafletHTML(config: LeafletConfig): string {
           if (!Number.isFinite(markerLat) || !Number.isFinite(markerLong)) return;
 
           let leafletMarker;
-          if (marker.iconUrl) {
+          const resolvedIconValue = marker.iconUrl || markerTypeIcons[marker.type];
+          const iconSpec = resolveIconSpec(resolvedIconValue);
+          if (iconSpec?.kind === "image") {
             const customIcon = L.icon({
-              iconUrl: marker.iconUrl,
+              iconUrl: iconSpec.src,
               shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
-              iconSize: [25, 41],
-              iconAnchor: [12, 41],
-              popupAnchor: [1, -34],
+              iconSize: [28, 28],
+              iconAnchor: [14, 28],
+              popupAnchor: [0, -28],
               shadowSize: [41, 41],
             });
             leafletMarker = L.marker([markerLat, markerLong], { icon: customIcon });
+          } else if (iconSpec?.kind === "emoji") {
+            const emojiIcon = L.divIcon({
+              className: "leaflet-marker-emoji",
+              html: '<div style="font-size:22px;line-height:22px;">' + iconSpec.text + "</div>",
+              iconSize: [22, 22],
+              iconAnchor: [11, 22],
+              popupAnchor: [0, -20],
+            });
+            leafletMarker = L.marker([markerLat, markerLong], { icon: emojiIcon });
           } else {
             leafletMarker = L.marker([markerLat, markerLong], { icon: defaultIcon });
           }
 
           leafletMarker.options.markerId = marker.id;
-          if (marker.title && !marker.popup) leafletMarker.bindTooltip(marker.title);
+          if (marker.title) {
+            leafletMarker.bindTooltip(marker.title, {
+              permanent: true,
+              direction: "top",
+              offset: [0, -34],
+              className: "leaflet-marker-callout",
+            });
+          }
           leafletMarker.addTo(markerLayer);
-          if (marker.popup) leafletMarker.bindPopup(marker.popup);
+          if (marker.popup) {
+            leafletMarker.bindPopup(marker.popup);
+            leafletMarker.on("mouseover", () => leafletMarker.openPopup());
+            leafletMarker.on("mouseout", () => leafletMarker.closePopup());
+          }
         });
       };
       renderMarkers(markers);
@@ -416,6 +485,12 @@ function generateLeafletHTML(config: LeafletConfig): string {
             renderMarkers(markers);
           }
         });
+      }
+      if (!document.getElementById("leaflet-marker-callout-style")) {
+        const styleTag = document.createElement("style");
+        styleTag.id = "leaflet-marker-callout-style";
+        styleTag.textContent = ".leaflet-marker-callout{background:#111;color:#fff;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:4px 8px;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.35)}.leaflet-marker-emoji{background:transparent;border:none}";
+        document.head.appendChild(styleTag);
       }
       
       ${config.darkMode ? `mapContainer.style.filter = "brightness(0.6) invert(1) contrast(1.2)";` : ""}
