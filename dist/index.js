@@ -16,6 +16,21 @@ function normalizeObsidianLink(value) {
   }
   return cleaned;
 }
+function extractNoteLink(value) {
+  const cleaned = parseScalar(value).trim();
+  if (cleaned.startsWith("![[") && cleaned.endsWith("]]") || cleaned.startsWith("[[") && cleaned.endsWith("]]")) {
+    const inner = cleaned.replace(/^!?\[\[/, "").replace(/\]\]$/, "");
+    const noteFile = inner.split("|")[0]?.trim() ?? "";
+    if (noteFile) {
+      const slug = noteFile.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-+|-+$/g, "");
+      return `/${slug}`;
+    }
+  }
+  if (value.startsWith("/") || value.startsWith("http")) {
+    return value;
+  }
+  return null;
+}
 function applyMarkerField(marker, rawKey, rawValue) {
   const key = rawKey.trim();
   const value = parseScalar(rawValue.trim());
@@ -27,22 +42,37 @@ function applyMarkerField(marker, rawKey, rawValue) {
   else if (key === "iconUrl" || key === "icon" || key === "markerIcon") marker.iconUrl = normalizeObsidianLink(value);
   else if (key === "title") marker.title = value;
   else if (key === "description") marker.description = value;
+  else if (key === "link" || key === "href" || key === "noteLink" || key === "note") {
+    const extracted = extractNoteLink(value);
+    if (extracted) marker.link = extracted;
+  }
 }
 function parseLegacyMarkerLine(rawValue, fallbackLat, fallbackLong) {
   const parts = rawValue.split(",").map((part) => parseScalar(part.trim()));
+  const id = parts[0] ?? "";
   const latCandidate = Number(parts[1]);
   const longCandidate = Number(parts[2]);
-  const note = parts.slice(3).join(",").replace("[[", "").replace("]]", "").trim();
+  const title = parts[3] ?? "";
+  const type = parts[4] ?? "";
+  const linkRaw = parts[5] ?? "";
   const marker = {
+    id: id || void 0,
     lat: Number.isFinite(latCandidate) ? latCandidate : fallbackLat,
     long: Number.isFinite(longCandidate) ? longCandidate : fallbackLong
   };
-  if (parts[0]) {
-    marker.id = parts[0];
-    marker.title = parts[0];
+  if (title) {
+    marker.title = title;
+    marker.popup = title;
   }
-  if (note) marker.popup = note;
-  else if (parts[0]) marker.popup = parts[0];
+  if (type) {
+    marker.type = type;
+  }
+  if (linkRaw) {
+    const extracted = extractNoteLink(linkRaw);
+    if (extracted) {
+      marker.link = extracted;
+    }
+  }
   return marker;
 }
 function parseLeafletBlock(code) {
@@ -220,7 +250,8 @@ function generateLeafletHTML(config) {
               popup: item.popup,
               iconUrl: item.iconUrl,
               title: item.title ?? item.name,
-              description: item.description
+              description: item.description,
+              link: item.link
             };
           })
           .filter(Boolean);
@@ -379,8 +410,26 @@ function generateLeafletHTML(config) {
             });
           }
           leafletMarker.addTo(markerLayer);
+          
+          // ENHANCED: Handle marker click to open linked note
+          if (marker.link) {
+            leafletMarker.on("click", () => {
+              window.location.href = marker.link;
+            });
+            const elem = leafletMarker.getElement?.();
+            if (elem) {
+              elem.style.cursor = "pointer";
+              elem.classList.add("leaflet-marker-clickable");
+            }
+          }
+          
           if (marker.popup) {
-            leafletMarker.bindPopup(marker.popup);
+            // ENHANCED: Add link button to popup if marker has a link
+            let popupContent = marker.popup;
+            if (marker.link) {
+              popupContent += \`<div style="margin-top: 8px;"><a href="\${marker.link}" style="display: inline-block; padding: 4px 8px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; font-size: 12px;">Open Note \u2192</a></div>\`;
+            }
+            leafletMarker.bindPopup(popupContent);
             leafletMarker.on("mouseover", () => leafletMarker.openPopup());
             leafletMarker.on("mouseout", () => leafletMarker.closePopup());
           }
@@ -414,7 +463,7 @@ function generateLeafletHTML(config) {
       if (!document.getElementById("leaflet-marker-callout-style")) {
         const styleTag = document.createElement("style");
         styleTag.id = "leaflet-marker-callout-style";
-        styleTag.textContent = ".leaflet-marker-callout{background:#111;color:#fff;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:4px 8px;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.35)}.leaflet-marker-emoji{background:transparent;border:none}";
+        styleTag.textContent = ".leaflet-marker-callout{background:#111;color:#fff;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:4px 8px;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.35)}.leaflet-marker-emoji{background:transparent;border:none}.leaflet-marker-clickable{cursor:pointer !important}";
         document.head.appendChild(styleTag);
       }
 
