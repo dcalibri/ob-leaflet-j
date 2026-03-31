@@ -18,6 +18,20 @@ function applyMarkerField(marker, rawKey, rawValue) {
   else if (key === "title") marker.title = value;
   else if (key === "description") marker.description = value;
 }
+function parseLegacyMarkerLine(rawValue, fallbackLat, fallbackLong) {
+  const parts = rawValue.split(",").map((part) => parseScalar(part.trim()));
+  const latCandidate = Number(parts[1]);
+  const longCandidate = Number(parts[2]);
+  const note = parts.slice(3).join(",").replace("[[", "").replace("]]", "").trim();
+  const marker = {
+    lat: Number.isFinite(latCandidate) ? latCandidate : fallbackLat,
+    long: Number.isFinite(longCandidate) ? longCandidate : fallbackLong
+  };
+  if (parts[0]) marker.title = parts[0];
+  if (note) marker.popup = note;
+  else if (parts[0]) marker.popup = parts[0];
+  return marker;
+}
 function parseLeafletBlock(code) {
   const config = {
     id: "leaflet-map",
@@ -32,6 +46,7 @@ function parseLeafletBlock(code) {
     unit: "meters",
     scale: 1,
     darkMode: false,
+    showCenterMarker: true,
     markers: []
   };
   const lines = code.split("\n");
@@ -103,6 +118,11 @@ function parseLeafletBlock(code) {
       continue;
     }
     if (key === "marker") {
+      if (value.includes(",")) {
+        config.markers.push(parseLegacyMarkerLine(value, config.lat, config.long));
+        i += 1;
+        continue;
+      }
       const marker = { lat: config.lat, long: config.long };
       i += 1;
       while (i < lines.length) {
@@ -140,6 +160,7 @@ function parseLeafletBlock(code) {
     else if (key === "unit") config.unit = value;
     else if (key === "scale") config.scale = parseFloat(value);
     else if (key === "darkMode") config.darkMode = value.toLowerCase() === "true";
+    else if (key === "showCenterMarker") config.showCenterMarker = value.toLowerCase() !== "false";
     else if (key === "tileServer") config.tileServer = parseScalar(value);
     i += 1;
   }
@@ -156,7 +177,67 @@ function generateLeafletHTML(config) {
 
     const initMap = () => {
       const map = L.map("${config.id}").setView([${config.lat}, ${config.long}], ${config.defaultZoom});
-      const markers = ${markersJson};
+      const mapId = "${config.id}";
+      const configuredMarkers = ${markersJson};
+      const normalizeFallbackMarkers = (input) => {
+        if (!Array.isArray(input)) return [];
+        return input
+          .map((item) => {
+            if (!item || typeof item !== "object") return null;
+            const lat = Number(item.lat);
+            const long = Number(item.long ?? item.lng ?? item.lon ?? item.longitude);
+            if (!Number.isFinite(lat) || !Number.isFinite(long)) return null;
+            return {
+              lat,
+              long,
+              popup: item.popup,
+              iconUrl: item.iconUrl,
+              title: item.title,
+              description: item.description
+            };
+          })
+          .filter(Boolean);
+      };
+      const resolveFallbackMarkersByMapId = () => {
+        try {
+          if (window.ObsidianLeaflet && typeof window.ObsidianLeaflet.getMarkers === "function") {
+            const obsidianMarkers = window.ObsidianLeaflet.getMarkers(mapId);
+            const normalized = normalizeFallbackMarkers(obsidianMarkers);
+            if (normalized.length > 0) return normalized;
+          }
+
+          const globalById =
+            window.__leafletMarkersById?.[mapId] ??
+            window.leafletMarkersById?.[mapId] ??
+            window.LEAFLET_MARKERS_BY_ID?.[mapId];
+          const normalizedGlobal = normalizeFallbackMarkers(globalById);
+          if (normalizedGlobal.length > 0) return normalizedGlobal;
+
+          const markerScript = document.querySelector('script[type="application/json"][data-leaflet-markers-for="' + mapId + '"]');
+          if (markerScript && markerScript.textContent) {
+            const parsed = JSON.parse(markerScript.textContent);
+            const normalizedScript = normalizeFallbackMarkers(parsed);
+            if (normalizedScript.length > 0) return normalizedScript;
+          }
+
+          const cached = localStorage.getItem("leaflet:markers:" + mapId);
+          if (cached) {
+            const parsedCached = JSON.parse(cached);
+            const normalizedCached = normalizeFallbackMarkers(parsedCached);
+            if (normalizedCached.length > 0) return normalizedCached;
+          }
+        } catch (_error) {
+          return [];
+        }
+        return [];
+      };
+      const markers =
+        Array.isArray(configuredMarkers) && configuredMarkers.length > 0
+          ? configuredMarkers
+          : resolveFallbackMarkersByMapId();
+      if (Array.isArray(markers) && markers.length === 0 && ${config.showCenterMarker}) {
+        markers.push({ lat: ${config.lat}, long: ${config.long} });
+      }
       const defaultIcon = L.icon({
         iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
         iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
