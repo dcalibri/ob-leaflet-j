@@ -241,8 +241,7 @@ function generateLeafletHTML(config) {
 
           const endpoint =
             document.getElementById(mapId)?.dataset?.markersEndpoint ??
-            window.__leafletMarkerEndpoint ??
-            "/leaflet-markers.json";
+            window.__leafletMarkerEndpoint;
           if (!endpoint) return [];
 
           const res = await fetch(endpoint);
@@ -367,9 +366,19 @@ var LeafletTransformer = () => {
     markdownPlugins() {
       return [
         () => (tree) => {
+          const usedMapIds = /* @__PURE__ */ new Set();
           visit(tree, "code", (node, index, parent) => {
             if (node.lang !== "leaflet") return;
             const config = parseLeafletBlock(node.value);
+            const baseId = (config.id || "leaflet-map").trim() || "leaflet-map";
+            let resolvedId = baseId;
+            let counter = 1;
+            while (usedMapIds.has(resolvedId)) {
+              resolvedId = `${baseId}-${counter}`;
+              counter += 1;
+            }
+            usedMapIds.add(resolvedId);
+            config.id = resolvedId;
             const html = generateLeafletHTML(config);
             if (parent && typeof index === "number") {
               parent.children[index] = {
