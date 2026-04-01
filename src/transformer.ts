@@ -260,7 +260,7 @@ function generateLeafletHTML(config: LeafletConfig): string {
   const markersJson = JSON.stringify(config.markers);
   const mapId = config.id;
 
-  return `<div id="${mapId}" style="height: ${config.height}; width: ${config.width}; border-radius: 8px; overflow: hidden; margin: 1rem 0;"></div>
+  return `<div style="height: ${config.height}; width: ${config.width}; border-radius: 8px; overflow: hidden; margin: 1rem 0;"><div id="${mapId}" style="height: 100%; width: 100%;"></div></div>
 <script>
   (function() {
     const LEAFLET_JS = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
