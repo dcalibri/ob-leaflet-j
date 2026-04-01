@@ -614,6 +614,7 @@ export const LeafletTransformer: QuartzTransformerPlugin = () => {
               resolvedId = `${baseId}-${counter}`;
               counter += 1;
             }
+            
             usedMapIds.add(resolvedId);
             config.id = resolvedId;
             const html = generateLeafletHTML(config);
