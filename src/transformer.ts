@@ -96,6 +96,7 @@ function parseLeafletBlock(code: string): LeafletConfig {
   const lines = code.split("\n");
   let i = 0;
 
+  
   while (i < lines.length) {
     const currentLine = lines[i];
     if (currentLine === undefined) break;
