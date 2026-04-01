@@ -463,6 +463,10 @@ function generateLeafletHTML(config: LeafletConfig): string {
       };
       renderMarkers(markers);
 
+      requestAnimationFrame(() => {
+        map.invalidateSize();
+      });
+
       if (!Array.isArray(markers) || markers.length === 0) {
         let attempts = 0;
         const maxAttempts = 8;
